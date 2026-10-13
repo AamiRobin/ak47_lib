@@ -61,6 +61,8 @@ if Config.Inventory == 'auto' then
         'tgiann-inventory',
         'core_inventory',
         'jaksam_inventory',
+        'mf-inventory',
+        'cheeza_inventory',
     }
     CreateThread(function()
         for _, script in pairs(scripts) do
@@ -70,26 +72,6 @@ if Config.Inventory == 'auto' then
                 end
 
                 Config.Inventory = script
-
-                if Config.Inventory == 'qb-inventory' then
-                    RegisterNetEvent('ak47_lib:closeqbinventory', function()
-                        local source = source
-                        exports['qb-inventory']:CloseInventory(source, Lib47.GetIdentifier(source))
-                    end)
-
-                    RegisterNetEvent('ak47_lib:openqbinventory', function(target)
-                        exports['qb-inventory']:OpenInventoryById(source, target)
-                    end)
-
-                    RegisterNetEvent('ak47_lib:OpenQbStash', function(identifier, data)
-                        exports["qb-inventory"]:OpenInventory(source, identifier, data)
-                    end)
-                elseif Config.Inventory == 'ox_inventory' then
-                    RegisterNetEvent('ak47_lib:registeroxinventory', function(identifier, data)
-                        exports["ox_inventory"]:RegisterStash(identifier, identifier, data.slots, data.weight * 1000)
-                    end)
-                end
-
                 print(string.format("^2['INVENTORY']: %s^0", Config.Inventory))
 
                 WaitForItems(function()
@@ -106,6 +88,34 @@ else
         end)
     end)
 end
+
+RegisterNetEvent('ak47_lib:closeqbinventory', function()
+    local source = source
+    if Config.Inventory == 'qb-inventory' then
+        exports['qb-inventory']:CloseInventory(source, Lib47.GetIdentifier(source))
+    end
+end)
+
+RegisterNetEvent('ak47_lib:openqbinventory', function(target)
+    local source = source
+    if Config.Inventory == 'qb-inventory' then
+        exports['qb-inventory']:OpenInventoryById(source, target)
+    end
+end)
+
+RegisterNetEvent('ak47_lib:OpenQbStash', function(identifier, data)
+    local source = source
+    if Config.Inventory == 'qb-inventory' then
+        exports["qb-inventory"]:OpenInventory(source, identifier, data)
+    end
+end)
+
+RegisterNetEvent('ak47_lib:registeroxinventory', function(identifier, data)
+    if GetResourceState('ox_inventory') == 'started' or Config.Inventory == 'ox_inventory' then
+        exports["ox_inventory"]:RegisterStash(identifier, identifier, data.slots, data.weight * 1000)
+    end
+end)
+
 
 FetchInvItems = function()
     Lib47.Items = Integration.GetItems()

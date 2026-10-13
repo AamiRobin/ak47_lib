@@ -43,6 +43,10 @@ Config.Inventory = 'auto'
 -- 'ak47_banking', 'qb-banking', 'okokBanking', 'Renewed-Banking', 'ars_banking'
 Config.Banking = 'auto'
 
+-- 'ak47_clothing', 'ak47_qb_clothing', 'illenium-appearance', 'fivem-appearance'
+-- 'rcore_clothes', 'rcore_clothing', 'raid_clothes', 'qb-clothing', 'codem-apperance', 'esx_skin', 'custom'
+Config.Clothing = 'auto'
+
 -- Locale (i18n).
 -- 'en', 'de', ...
 -- setr ak47_lib:locale en

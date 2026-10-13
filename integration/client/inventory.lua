@@ -17,6 +17,8 @@ if Config.Inventory == 'auto' then
         'tgiann-inventory',
         'core_inventory',
         'jaksam_inventory',
+        'mf-inventory',
+        'cheeza_inventory',
     }
     CreateThread(function()
         for _, script in pairs(scripts) do
@@ -167,43 +169,64 @@ end
 Lib47.OpenStash = function(identifier, name, weight, slots)
     if Config.Inventory == 'ak47_inventory' then
         exports["ak47_inventory"]:OpenInventory({identifier = identifier, type = 'stash', label = name, maxWeight = weight * 1000, slots = slots})
+        return true
 
     elseif Config.Inventory == 'ak47_qb_inventory' then
         exports["ak47_qb_inventory"]:OpenInventory({identifier = identifier, type = 'stash', label = name, maxWeight = weight * 1000, slots = slots})
+        return true
 
     elseif Config.Inventory == 'qb-inventory-old' then
         TriggerServerEvent("inventory:server:OpenInventory", "stash", identifier, {maxweight = weight * 1000, slots = slots})
         TriggerEvent("inventory:client:SetCurrentStash", identifier)
+        return true
 
     elseif Config.Inventory == 'ps-inventory' then
         TriggerServerEvent("ps-inventory:server:OpenInventory", "stash", identifier, {maxweight = weight * 1000, slots = slots})
         TriggerEvent("ps-inventory:client:SetCurrentStash", identifier)
+        return true
 
     elseif Config.Inventory == 'lj-inventory' then
         TriggerServerEvent("lj-inventory:server:OpenInventory", "stash", identifier, {maxweight = weight * 1000, slots = slots})
         TriggerEvent("lj-inventory:client:SetCurrentStash", identifier)
+        return true
 
     elseif Config.Inventory == 'qb-inventory' then
-        TriggerServerEvent("ak47_qb_policejob:OpenQbStash", identifier, {maxweight = weight * 1000, slots = slots, label = name})
+        TriggerServerEvent("ak47_lib:OpenQbStash", identifier, {maxweight = weight * 1000, slots = slots, label = name})
+        return true
 
     elseif Config.Inventory == 'ox_inventory' then
-        TriggerServerEvent('ak47_lib:registeroxinventory', identifier, {weight = weight, slots = slots}, uid)
+        TriggerServerEvent('ak47_lib:registeroxinventory', identifier, {weight = weight, slots = slots})
         exports["ox_inventory"]:openInventory('stash', identifier)
+        return true
 
     elseif Config.Inventory == 'qs-inventory' then
         TriggerServerEvent("inventory:server:OpenInventory", "stash", identifier, {maxweight = weight, slots = slots})
         TriggerEvent("inventory:client:SetCurrentStash", identifier)
+        return true
+
+    elseif Config.Inventory == 'mf-inventory' then
+        exports["mf-inventory"]:openOtherInventory(identifier)
+        return true
 
     elseif Config.Inventory == 'cheeza_inventory' then
         TriggerEvent('inventory:openHouse', name, identifier, "Stash", weight)
+        return true
 
     elseif Config.Inventory == 'core_inventory' then
         TriggerServerEvent('core_inventory:server:openInventory', identifier, 'stash')
+        return true
 
     elseif Config.Inventory == 'codem-inventory' then
         TriggerServerEvent('codem-inventory:server:openstash', identifier, slots, weight, identifier)
+        return true
+
+    elseif Config.Inventory == 'custom' then
+        -- your custom code below
+        return false
     end
+    return false
 end
+
 
 Lib47.CloseInventory = function()
     if Config.Inventory == 'ak47_inventory' then

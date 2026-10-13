@@ -122,6 +122,22 @@ Lib47.Creation.Render.DrawEntityBoundingBox = function(entity, r, g, b, a)
     Lib47.Creation.Render.DrawBoundingBox(box, r, g, b, a)
 end
 
+Lib47.Creation.Render.DrawText3D = function(coords, text)
+    local onScreen, _x, _y = World3dToScreen2d(coords.x, coords.y, coords.z)
+    if onScreen then
+        SetTextScale(0.35, 0.35)
+        SetTextFont(4)
+        SetTextProportional(1)
+        SetTextColour(255, 255, 255, 215)
+        SetTextEntry("STRING")
+        SetTextCentre(1)
+        AddTextComponentString(text)
+        DrawText(_x, _y)
+        local factor = (string.len(text)) / 370
+        DrawRect(_x, _y + 0.0125, 0.015 + factor, 0.03, 41, 11, 41, 100)
+    end
+end
+
 -- =============================================================================
 -- CAMERA & CONTROLS MODULE
 -- =============================================================================
@@ -132,6 +148,7 @@ Lib47.Creation.Cam.Create = function(typeof, pos, rot, render, pointAt)
     if render then
         SetCamActive(camera, true)
         RenderScriptCams(true, false, 0, true, false)
+        SetFocusArea(pos.x, pos.y, pos.z, 0.0, 0.0, 0.0)
     end
     if pointAt then
         PointCamAtEntity(camera, pointAt)
@@ -203,7 +220,10 @@ Lib47.Creation.Cam.HandleFlyCam = function(cam, boundPos, boundDist, moveSpeed, 
         didRot = true
     end
     
-    if didMove then SetCamCoord(cam, camPos) end
+    if didMove then
+        SetCamCoord(cam, camPos)
+        SetFocusArea(camPos.x, camPos.y, camPos.z, 0.0, 0.0, 0.0)
+    end
     if didRot then SetCamRot(cam, camRot, 2) end
     
     if boundPos and boundDist then
@@ -212,6 +232,7 @@ Lib47.Creation.Cam.HandleFlyCam = function(cam, boundPos, boundDist, moveSpeed, 
             local boundDir = norm(camPos - boundPos)
             camPos = boundPos + (boundDir * boundDist)
             SetCamCoord(cam, camPos)
+            SetFocusArea(camPos.x, camPos.y, camPos.z, 0.0, 0.0, 0.0)
         end
     end
     return camPos, camRot
@@ -221,6 +242,7 @@ Lib47.Creation.Cam.Destroy = function(cam)
     SetCamActive(cam, false)
     RenderScriptCams(false, false, 0, true, false)
     DestroyCam(cam)
+    ClearFocus()
     SetFocusEntity(PlayerPedId())
 end
 
@@ -249,6 +271,7 @@ Lib47.Creation.Builders.PolyZone = function(existingData, locales, validateFn)
 
     local camera = Lib47.Creation.Cam.Create("DEFAULT_SCRIPTED_CAMERA", camPos, camRot, true)
 
+    local objectiveTitle = (locales and (locales.title or locales.zone_creation)) or L(locales, 'zone_creation')
     Lib47.ShowObjective({
         {
             Title = L(locales, 'zone_control'),
@@ -273,7 +296,7 @@ Lib47.Creation.Builders.PolyZone = function(existingData, locales, validateFn)
                 L(locales, 'cancel') .. " <k>DEL<k>",
             },
         },
-    }, L(locales, 'zone_creation'))
+    }, objectiveTitle)
     
     while true do
         Wait(0)
@@ -455,7 +478,7 @@ Lib47.Creation.Builders.PlaceModel = function(model, existingData, locales, isWa
 
     local pedPos = point or GetEntityCoords(PlayerPedId())
     local entity
-    if IsThisModelAVehicle(hash) then
+    if IsModelAVehicle(hash) then
         entity = CreateVehicle(hash, pedPos.x, pedPos.y, pedPos.z, entityHeading, false)
     else
         entity = CreateObject(hash, pedPos.x, pedPos.y, pedPos.z, false, false, false)
@@ -469,15 +492,19 @@ Lib47.Creation.Builders.PlaceModel = function(model, existingData, locales, isWa
     SetEntityAlpha(entity, 200)
 
     local fwd, right, up, plyPos = GetEntityMatrix(PlayerPedId())
-    local camPos = plyPos + (up * 2)
-    local camRot = vector3(-35.0, 0.0, GetEntityHeading(PlayerPedId()))
+    local basePos = point or plyPos
+    local baseHeading = existingData and (existingData.w or existingData.heading) or GetEntityHeading(PlayerPedId())
+    local camPos = basePos + (up * 2)
+    local camRot = vector3(-35.0, 0.0, baseHeading)
     local camera = Lib47.Creation.Cam.Create("DEFAULT_SCRIPTED_CAMERA", camPos, camRot, true)
 
+    local objectiveTitle = type(locales) == 'string' and locales or (locales and (locales.title or locales.setup_point)) or L(locales, 'setup_point')
+    local setPointLabel = (locales and type(locales) == 'table' and (locales.set_point or locales.title)) or L(locales, 'set_point')
     Lib47.ShowObjective({
         {
             Title = L(locales, 'placement'),
             List = {
-                L(locales, 'set_point') .. " <m>1<m>",
+                setPointLabel .. " <m>1<m>",
                 L(locales, 'rotate') .. " <m>3<m>",
                 L(locales, 'precision') .. " <k>SHIFT<k>",
             },
@@ -496,7 +523,7 @@ Lib47.Creation.Builders.PlaceModel = function(model, existingData, locales, isWa
                 L(locales, 'cancel') .. " <k>DEL<k>",
             }
         },
-    }, L(locales, 'setup_point'))
+    }, objectiveTitle)
 
     while true do
         Wait(0)
@@ -564,7 +591,7 @@ Lib47.Creation.Builders.PlaceModel = function(model, existingData, locales, isWa
         if endCoords then
             -- Depending on if it's a vehicle or not, adjust height
             local zOffset = 0.0
-            if IsThisModelAVehicle(hash) then
+            if IsModelAVehicle(hash) then
                 -- Get vehicle boundings
                 local min, max = GetModelDimensions(hash)
                 zOffset = math.abs(min.z)
@@ -580,6 +607,9 @@ Lib47.Creation.Builders.PlaceModel = function(model, existingData, locales, isWa
             DrawLine(endCoords.x, endCoords.y, endCoords.z, endCoords.x, endCoords.y, endCoords.z + 2.0, r, g, 0, 255)
             SetEntityCoordsNoOffset(entity, point.x, point.y, point.z)
             SetEntityHeading(entity, entityHeading)
+            if objectiveTitle then
+                Lib47.Creation.Render.DrawText3D(vector3(endCoords.x, endCoords.y, endCoords.z + (zOffset > 0.0 and zOffset + 0.6 or 1.2)), objectiveTitle)
+            end
         end
     end
 end
@@ -610,15 +640,19 @@ Lib47.Creation.Builders.PlacePed = function(model, existingData, locales, valida
     FreezeEntityPosition(entity, true)
 
     local fwd, right, up, plyPos = GetEntityMatrix(PlayerPedId())
-    local camPos = plyPos + (up * 2)
-    local camRot = vector3(-35.0, 0.0, GetEntityHeading(PlayerPedId()))
+    local basePos = point or plyPos
+    local baseHeading = existingData and (existingData.w or existingData.heading) or GetEntityHeading(PlayerPedId())
+    local camPos = basePos + (up * 2)
+    local camRot = vector3(-35.0, 0.0, baseHeading)
     local camera = Lib47.Creation.Cam.Create("DEFAULT_SCRIPTED_CAMERA", camPos, camRot, true)
 
+    local objectiveTitle = type(locales) == 'string' and locales or (locales and (locales.title or locales.setup_point)) or L(locales, 'setup_point')
+    local setPointLabel = (locales and type(locales) == 'table' and (locales.set_point or locales.title)) or L(locales, 'set_point')
     Lib47.ShowObjective({
         {
             Title = L(locales, 'placement'),
             List = {
-                L(locales, 'set_point') .. " <m>1<m>",
+                setPointLabel .. " <m>1<m>",
                 L(locales, 'rotate') .. " <m>3<m>",
                 L(locales, 'precision') .. " <k>SHIFT<k>",
             },
@@ -637,7 +671,7 @@ Lib47.Creation.Builders.PlacePed = function(model, existingData, locales, valida
                 L(locales, 'cancel') .. " <k>DEL<k>",
             }
         },
-    }, L(locales, 'setup_point'))
+    }, objectiveTitle)
 
     while true do
         Wait(0)
@@ -703,6 +737,9 @@ Lib47.Creation.Builders.PlacePed = function(model, existingData, locales, valida
             DrawLine(endCoords.x, endCoords.y, endCoords.z, endCoords.x, endCoords.y, endCoords.z + 2.0, r, g, 0, 255)
             SetEntityCoordsNoOffset(entity, point.x, point.y, point.z)
             SetEntityHeading(entity, entityHeading)
+            if objectiveTitle then
+                Lib47.Creation.Render.DrawText3D(vector3(endCoords.x, endCoords.y, endCoords.z + 1.2), objectiveTitle)
+            end
         end
     end
 end
@@ -733,7 +770,7 @@ Lib47.Creation.Builders.BoxZone = function(existingData, locales, validateFn)
         maxZ = existingData.maxZ or (boxPos.z + 1.0)
     end
 
-    local step = boxPos and 2 or 1
+    local objectiveTitle = (locales and (locales.title or locales.box_creation)) or L(locales, 'box_creation')
 
     if step == 1 then
         Lib47.ShowObjective({
@@ -757,7 +794,7 @@ Lib47.Creation.Builders.BoxZone = function(existingData, locales, validateFn)
                     L(locales, 'cancel') .. " <k>DEL<k>",
                 },
             },
-        }, L(locales, 'box_creation'))
+        }, objectiveTitle)
     else
         Lib47.ShowObjective({
             {
@@ -786,7 +823,7 @@ Lib47.Creation.Builders.BoxZone = function(existingData, locales, validateFn)
                     L(locales, 'cancel') .. " <k>DEL<k>",
                 },
             },
-        }, L(locales, 'box_creation'))
+        }, objectiveTitle)
     end
 
     while true do
@@ -1161,7 +1198,8 @@ Lib47.Creation.Builders.CircleZone = function(existingData, locales, validateFn,
         end
     end
 
-    Lib47.ShowObjective(getObjectiveControls(), L(locales, 'circle_creation'))
+    local objectiveTitle = (locales and (locales.title or locales.circle_creation)) or L(locales, 'circle_creation')
+    Lib47.ShowObjective(getObjectiveControls(), objectiveTitle)
 
     while true do
         Wait(0)

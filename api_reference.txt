@@ -196,8 +196,10 @@ setLocale
 Lib47.LookAtEntity
 Lib47.Notify
 Lib47.OpenGarageHousing
+Lib47.OpenOutfitMenu
 Lib47.OpenSearchInventory
 Lib47.OpenStash
+Lib47.OpenWardrobe
 Lib47.PlayAnim
 Lib47.Points.New
 Lib47.Points.GetAll
@@ -268,7 +270,7 @@ Lib47.Zones.getCurrentZones
 Lib47.Zones.getNearbyZones
 
 ================
-    EVENTS
+   EVENTS
 ================
 ak47_lib:OnGangUpdate
 ak47_lib:OnJobUpdate

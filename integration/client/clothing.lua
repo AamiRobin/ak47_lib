@@ -1,3 +1,27 @@
+if Config.Clothing == 'auto' then
+    local scripts = {
+        'ak47_clothing',
+        'ak47_qb_clothing',
+        'illenium-appearance',
+        'fivem-appearance',
+        'rcore_clothes',
+        'rcore_clothing',
+        'raid_clothes',
+        'qb-clothing',
+        'codem-apperance',
+        'esx_skin',
+    }
+    CreateThread(function()
+        for _, script in pairs(scripts) do
+            if GetResourceState(script) == 'started' then
+                Config.Clothing = script
+                print(string.format("^2['CLOTHING']: %s^0", Config.Clothing))
+                return
+            end
+        end
+    end)
+end
+
 Lib47.IsMpMale = function()
     return GetEntityModel(PlayerPedId()) == `mp_m_freemode_01`
 end
@@ -218,3 +242,57 @@ Lib47.ResetOutfit = function()
         end
     end
 end
+
+Lib47.OpenWardrobe = function(customCallback)
+    if Config.Clothing == 'ak47_clothing' then
+        exports['ak47_clothing']:openOutfit()
+        return true
+    elseif Config.Clothing == 'ak47_qb_clothing' then
+        exports['ak47_qb_clothing']:openOutfit()
+        return true
+    elseif Config.Clothing == 'illenium-appearance' then
+        TriggerEvent("illenium-appearance:client:openOutfitMenu")
+        return true
+    elseif Config.Clothing == 'fivem-appearance' then
+        if exports['fivem-appearance'] and exports['fivem-appearance'].openWardrobe then
+            exports['fivem-appearance']:openWardrobe()
+        else
+            TriggerEvent("fivem-appearance:client:openOutfitMenu")
+        end
+        return true
+    elseif Config.Clothing == 'rcore_clothes' then
+        TriggerEvent('rcore_clothes:openOutfits')
+        return true
+    elseif Config.Clothing == 'rcore_clothing' then
+        TriggerEvent('rcore_clothing:openChangingRoom')
+        return true
+    elseif Config.Clothing == 'raid_clothes' then
+        TriggerEvent('raid_clothes:openmenu')
+        return true
+    elseif Config.Clothing == 'qb-clothing' then
+        TriggerEvent('qb-clothing:client:openOutfitMenu')
+        return true
+    elseif Config.Clothing == 'codem-apperance' then
+        TriggerEvent('codem-apperance:OpenWardrobe')
+        return true
+    elseif Config.Clothing == 'esx_skin' or Lib47.Framework == 'esx' then
+        if customCallback then
+            customCallback()
+            return true
+        end
+        return false
+    elseif Config.Clothing == 'custom' then
+        -- your custom code below
+        return false
+    end
+    return false
+end
+
+Lib47.OpenOutfitMenu = Lib47.OpenWardrobe
+
+exports('OpenWardrobe', Lib47.OpenWardrobe)
+exports('OpenOutfitMenu', Lib47.OpenOutfitMenu)
+exports('GetOutfit', Lib47.GetOutfit)
+exports('SetOutfit', Lib47.SetOutfit)
+exports('LoadOutfit', Lib47.LoadOutfit)
+exports('ResetOutfit', Lib47.ResetOutfit)

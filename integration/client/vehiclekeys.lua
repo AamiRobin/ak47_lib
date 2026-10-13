@@ -7,6 +7,7 @@ if Config.VehicleKey == 'auto' then
         'cd_garage',
         'qb-vehiclekeys',
         'qbx_vehiclekeys',
+        'keys',
     }
     CreateThread(function()
         for _, script in pairs(scripts) do
@@ -35,16 +36,21 @@ Lib47.GiveVehicleKey = function(plate, vehicle, virtual)
     elseif Config.VehicleKey == 'wasabi_carlock' then
         exports['wasabi_carlock']:GiveKey(plate)
     elseif Config.VehicleKey == 'qs-vehiclekeys' then
-        exports['qs-vehiclekeys']:GiveKeys(plate, GetDisplayNameFromVehicleModel(GetEntityModel(vehicle)))
+        local modelName = vehicle and DoesEntityExist(vehicle) and GetDisplayNameFromVehicleModel(GetEntityModel(vehicle)) or ''
+        exports['qs-vehiclekeys']:GiveKeys(plate, modelName)
     elseif Config.VehicleKey == 'cd_garage' then
         TriggerEvent('cd_garage:AddKeys', plate)
     elseif Config.VehicleKey == 'qb-vehiclekeys' or Config.VehicleKey == 'qbx_vehiclekeys' then
         TriggerEvent("qb-vehiclekeys:client:AddKeys", plate)
+    elseif Config.VehicleKey == 'keys' then
+        local modelName = vehicle and DoesEntityExist(vehicle) and GetDisplayNameFromVehicleModel(GetEntityModel(vehicle)) or ''
+        TriggerServerEvent('keys:giveTemporaryKeys', tostring(plate), GetLabelText(modelName), 'shop')
     elseif Config.VehicleKey == 'custom' then
         -- your custom code below
 
     end
 end
+
 
 Lib47.Callback.Register('ak47_lib:callback:client:GiveVehicleKey', function( plate, vehNetId, virtual )
     local vehicle = nil
