@@ -1,5 +1,7 @@
 if Config.Clothing == 'auto' then
     local scripts = {
+        'ak47_clothingshop',
+        'ak47_qb_clothingshop',
         'ak47_clothing',
         'ak47_qb_clothing',
         'illenium-appearance',
@@ -244,11 +246,17 @@ Lib47.ResetOutfit = function()
 end
 
 Lib47.OpenWardrobe = function(customCallback)
-    if Config.Clothing == 'ak47_clothing' then
-        exports['ak47_clothing']:openOutfit()
+    if Config.Clothing == 'ak47_clothingshop' then
+        TriggerEvent('ak47_clothingshop:OpenWardrobe')
+        return true
+    elseif Config.Clothing == 'ak47_qb_clothingshop' then
+        TriggerEvent('ak47_qb_clothingshop:OpenWardrobe')
+        return true
+    elseif Config.Clothing == 'ak47_clothing' then
+        TriggerEvent('ak47_clothing:openOutfit')
         return true
     elseif Config.Clothing == 'ak47_qb_clothing' then
-        exports['ak47_qb_clothing']:openOutfit()
+        TriggerEvent('ak47_qb_clothing:openOutfit')
         return true
     elseif Config.Clothing == 'illenium-appearance' then
         TriggerEvent("illenium-appearance:client:openOutfitMenu")
@@ -295,4 +303,4 @@ exports('OpenOutfitMenu', Lib47.OpenOutfitMenu)
 exports('GetOutfit', Lib47.GetOutfit)
 exports('SetOutfit', Lib47.SetOutfit)
 exports('LoadOutfit', Lib47.LoadOutfit)
-exports('ResetOutfit', Lib47.ResetOutfit)
+exports('ResetOutfit', Lib47.ResetOutfit)
