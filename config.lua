@@ -47,6 +47,9 @@ Config.Banking = 'auto'
 -- 'rcore_clothes', 'rcore_clothing', 'raid_clothes', 'qb-clothing', 'codem-apperance', 'esx_skin', 'custom'
 Config.Clothing = 'auto'
 
+-- 'ak47_timesync', 'qb-weathersync', 'cd_easytime', 'av_weather', 'vSync'
+Config.TimeScript = 'auto'
+
 -- Locale (i18n).
 -- 'en', 'de', ...
 -- setr ak47_lib:locale en
