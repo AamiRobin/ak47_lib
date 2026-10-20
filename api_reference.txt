@@ -273,6 +273,8 @@ Lib47.UploadToFiveManage
 Lib47.UploadMultipleToFiveManage
 Lib47.TakeScreenshotAndUpload
 Lib47.PauseTimeSync
+Lib47.DoesExportExist
+Lib47.SafeExport
 
 ================
    EVENTS
