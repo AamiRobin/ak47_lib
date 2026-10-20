@@ -770,6 +770,7 @@ Lib47.Creation.Builders.BoxZone = function(existingData, locales, validateFn)
         maxZ = existingData.maxZ or (boxPos.z + 1.0)
     end
 
+    local step = boxPos and 2 or 1
     local objectiveTitle = (locales and (locales.title or locales.box_creation)) or L(locales, 'box_creation')
 
     if step == 1 then

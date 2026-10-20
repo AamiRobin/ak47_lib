@@ -218,6 +218,10 @@ InteractionsLoop = function()
 
         local isPaused = IsPauseMenuActive()
         local isNpcActive = (Interface.IsNpcInteractActive and Interface.IsNpcInteractActive()) or false
+        local isContextActive = (Interface.GetOpenMenu and Interface.GetOpenMenu() ~= nil) or false
+        local isInputActive = (Interface.IsInputOpen and Interface.IsInputOpen()) or false
+        local isAlertActive = (Interface.IsAlertOpen and Interface.IsAlertOpen()) or false
+        local isUIActive = isPaused or isNpcActive or isContextActive or isInputActive or isAlertActive
 
         if next(ActiveInteractions) then
             for id, interact in pairs(ActiveInteractions) do
@@ -238,7 +242,7 @@ InteractionsLoop = function()
 
                 if dist <= maxDist then
                     local onScreen, screenX, screenY = GetScreenCoordFromWorldCoord(coords.x, coords.y, coords.z)
-                    if isPaused or isNpcActive then
+                    if isUIActive then
                         onScreen = false
                     end
 
@@ -386,7 +390,7 @@ InteractionsLoop = function()
                     options = nuiOptions,
                     mode = mode,
                     arc = data.arc or false,
-                    scale = data.scale or 1.0
+                    scale = data.scale or 0.8
                 })
 
                 interact.displayed = true

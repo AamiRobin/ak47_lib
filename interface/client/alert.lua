@@ -63,6 +63,12 @@ RegisterNUICallback('alertCancel', function(_, cb)
     cb('ok')
 end)
 
+
+
+Interface.IsAlertOpen = function()
+    return alertState.visible
+end
+
 -- exports moved to integration
 
 AddEventHandler('onResourceStop', function(resourceName)

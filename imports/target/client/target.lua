@@ -247,9 +247,9 @@ Lib47.Target.RemoveZone = function(id)
         local targetScript = GetResourceState('ak47_target') == 'started' and 'ak47_target' or 'ox_target'
         exports[targetScript]:removeZone(id, true)
     elseif GetResourceState('qb-target') == 'started' then
-        exports['qb-target']:RemoveZone(id.name or id)
+        exports['qb-target']:RemoveZone(type(id) == 'table' and id.name or id)
     elseif GetResourceState('qtarget') == 'started' then
-        exports['qtarget']:RemoveZone(id.name or id)
+        exports['qtarget']:RemoveZone(type(id) == 'table' and id.name or id)
     end
 end
 
