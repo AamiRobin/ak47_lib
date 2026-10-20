@@ -203,7 +203,8 @@ Lib47.GetAllOfflinePlayers = function()
 end
 
 Lib47.GetJobs = function()
-    return QBCore.Shared.Jobs
+    local qb = exports['qb-core']:GetCoreObject()
+    return qb and qb.Shared and qb.Shared.Jobs or QBCore.Shared.Jobs
 end
 
 Lib47.GetOfflineMoney = function(identifier, account)
