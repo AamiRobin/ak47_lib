@@ -289,7 +289,7 @@ end
 -- Constructors
 -- ==========================================
 function Lib47.Zones.Poly(data)
-    data.thickness = data.thickness or 4.0
+    data.thickness = data.thickness or (data.minZ and data.maxZ and math.abs(data.maxZ - data.minZ)) or 4.0
     local pointN = data.points and #data.points or 0
     local points = table.create(pointN, 0)
 
