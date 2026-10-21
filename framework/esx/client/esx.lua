@@ -103,6 +103,14 @@ Lib47.GetJob = function()
     return Lib47.PlayerData.job
 end
 
+Lib47.OpenBossMenu = function( jobName )
+    TriggerEvent('esx_society:openBossMenu', jobName, function(data, menu)
+        if menu then
+            menu.close()
+        end
+    end)
+end
+
 Lib47.AddStress = function(amount)
     TriggerEvent('esx_status:add', 'stress', amount * 10000)
 end

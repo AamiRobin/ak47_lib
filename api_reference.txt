@@ -68,7 +68,11 @@ Lib47.CloseInventory
 Lib47.CreateAutomobile
 Lib47.CreateUseableItem
 Lib47.CreateVehicleServerSetter
+Lib47.CreateGarage
+Lib47.SyncExternalGarageCreated
 Lib47.DeleteVehicle
+Lib47.DeleteGarage
+Lib47.SyncExternalGarageDeleted
 Lib47.EnsureAllDependencies
 Lib47.EnsureAnyDependency
 Lib47.EnsureDependency
@@ -105,6 +109,7 @@ Lib47.GetItemLabel
 Lib47.GetItems
 Lib47.GetItemsByName
 Lib47.GetJob
+Lib47.OpenBossMenu
 Lib47.GetJobs
 Lib47.GetLicense
 Lib47.GetMetaData
@@ -195,7 +200,7 @@ getLocale
 setLocale
 Lib47.LookAtEntity
 Lib47.Notify
-Lib47.OpenGarageHousing
+Lib47.OpenVehicleGarage
 Lib47.OpenOutfitMenu
 Lib47.OpenSearchInventory
 Lib47.OpenStash
@@ -222,6 +227,7 @@ Lib47.RemoveTargetEntity
 Lib47.RemoveTargetModel
 Lib47.RemoveVehicleKey
 Lib47.RemoveZone
+Lib47.RemoveGarage
 Lib47.RequestAnimDict
 Lib47.RequestAnimSet
 Lib47.RequestModel
@@ -236,6 +242,8 @@ Lib47.SetPlayerBucket
 Lib47.SetPlayerMetaValue
 Lib47.SetVehicleFuel
 Lib47.SetVehicleProperties
+Lib47.SetGarage
+Lib47.SetVehicleStored
 Lib47.ShowAlert
 Lib47.ShowContext
 Lib47.ShowInput
@@ -244,7 +252,7 @@ Lib47.ShowProgress
 Lib47.SpawnVehicle
 Lib47.StartParticleAtCoord
 Lib47.StartParticleOnEntity
-Lib47.StoreVehicleHousing
+Lib47.StoreVehicleToGarage
 Lib47.Target.AddBoxZone
 Lib47.Target.AddPolyZone
 Lib47.Target.AddCircleZone

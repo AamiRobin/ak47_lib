@@ -53,52 +53,69 @@ Lib47.IsGarageManagedExternally = function()
     return script == 'qb-garages' or script == 'qb-garage' or script == 'qbx_garages' or script == 'jg-advancedgarages'
 end
 
---- Registers a property garage with external garage systems (e.g. qb-garages)
+--- Registers a garage with external garage systems (e.g. qb-garages)
 --- @param garageId string|number
 --- @param garageCoords vector3|vector4|table
---- @param extraData table|nil
+--- @param extraData table|nil Optional { label = string, category = string, prefix = string, id = string }
 --- @return boolean
-Lib47.SetHouseGarage = function(garageId, garageCoords, extraData)
+Lib47.SetGarage = function(garageId, garageCoords, extraData)
     local script = Lib47.GetGarageScript()
     local idStr = tostring(garageId)
+    local prefix = (extraData and extraData.prefix) or ''
+    local formattedId = (extraData and extraData.id) or (prefix ~= '' and (prefix .. idStr)) or idStr
+    local label = (extraData and extraData.label) or formattedId
+    local category = (extraData and extraData.category) or 'car'
 
     if script == 'qb-garages' or script == 'qb-garage' or script == 'qbx_garages' then
         if garageCoords and garageCoords.x then
-            TriggerEvent('qb-garages:client:addHouseGarage', 'H:' .. idStr, {
-                label = 'H:' .. idStr,
+            TriggerEvent('qb-garages:client:addHouseGarage', formattedId, {
+                label = label,
                 takeVehicle = garageCoords,
-                category = (extraData and extraData.category) or 'car',
+                category = category,
             })
             Wait(100)
-            TriggerEvent('qb-garages:client:setHouseGarage', 'H:' .. idStr, true)
+            TriggerEvent('qb-garages:client:setHouseGarage', formattedId, true)
             return true
         end
     end
     return false
 end
 
---- Unregisters a property garage from external systems
+--- Unregisters a garage from external systems
 --- @param garageId string|number
+--- @param extraData table|nil Optional { prefix = string, id = string }
 --- @return boolean
-Lib47.RemoveHouseGarage = function(garageId)
+Lib47.RemoveGarage = function(garageId, extraData)
     local script = Lib47.GetGarageScript()
     local idStr = tostring(garageId)
+    local prefix = (extraData and extraData.prefix) or ''
+    local formattedId = (extraData and extraData.id) or (prefix ~= '' and (prefix .. idStr)) or idStr
 
     if script == 'qb-garages' or script == 'qb-garage' or script == 'qbx_garages' then
-        TriggerEvent('qb-garages:client:setHouseGarage', 'H:' .. idStr, false)
+        TriggerEvent('qb-garages:client:setHouseGarage', formattedId, false)
         return true
     end
     return false
 end
 
-Lib47.StoreVehicleHousing = function(garageid, vehicle)
+--- Stores a vehicle into the active garage script
+--- @param garageId string|number
+--- @param vehicle number
+--- @param extraData table|nil Optional { label = string, category = string, prefix = string, garageType = string, jgId = string }
+--- @return boolean
+Lib47.StoreVehicleToGarage = function(garageId, vehicle, extraData)
     local script = Lib47.GetGarageScript()
+    local idStr = tostring(garageId)
+    local label = (extraData and extraData.label) or ('Garage ' .. idStr)
+    local category = (extraData and extraData.category) or 'car'
+    local garageType = (extraData and extraData.garageType) or 'property'
+    local prefix = (extraData and extraData.prefix) or ''
 
     if script == 'ak47_garage' then
-        TriggerEvent("ak47_garage:housing:storevehicle", "Housing "..garageid, 'car')
+        TriggerEvent("ak47_garage:housing:storevehicle", label, category)
         return true
     elseif script == 'ak47_qb_garage' then
-        TriggerEvent("ak47_qb_garage:housing:storevehicle", "Housing "..garageid, 'car')
+        TriggerEvent("ak47_qb_garage:housing:storevehicle", label, category)
         return true
     elseif script == 'cd_garage' then
         if exports['cd_garage'] and exports['cd_garage'].StoreVehicle then
@@ -108,16 +125,17 @@ Lib47.StoreVehicleHousing = function(garageid, vehicle)
         end
         return true
     elseif script == 'okokGarage' then
-        TriggerEvent("okokGarage:StoreVehiclePrivate", tostring(garageid))
+        TriggerEvent("okokGarage:StoreVehiclePrivate", idStr)
         return true
     elseif script == 'jg-advancedgarages' then
-        TriggerEvent('jg-advancedgarages:client:store-vehicle', 'housing:'..garageid, "car")
+        local jgId = (extraData and extraData.jgId) or (prefix ~= '' and (prefix .. idStr)) or ('housing:' .. idStr)
+        TriggerEvent('jg-advancedgarages:client:store-vehicle', jgId, category)
         return true
     elseif script == 'loaf_garage' then
-        exports.loaf_garage:StoreVehicle("property", vehicle)
+        exports.loaf_garage:StoreVehicle(garageType, vehicle)
         return true
     elseif script == 'zerio-garage' then
-        TriggerServerEvent('ak47_housing:ZerioGarage:StoreVehicle', garageid, "Housing "..garageid)
+        TriggerServerEvent('ak47_lib:garage:server:StoreVehicle', idStr, label, extraData)
         return true
     elseif script == 'custom' then
         -- your custom code below
@@ -126,17 +144,28 @@ Lib47.StoreVehicleHousing = function(garageid, vehicle)
     return false
 end
 
-Lib47.OpenGarageHousing = function(garageid, coords)
+--- Opens the garage menu to retrieve a vehicle from the active garage script
+--- @param garageId string|number
+--- @param coords vector3|vector4|table|nil
+--- @param extraData table|nil Optional { label = string, category = string, prefix = string, garageType = string, jgId = string }
+--- @return boolean
+Lib47.OpenVehicleGarage = function(garageId, coords, extraData)
     local script = Lib47.GetGarageScript()
+    local idStr = tostring(garageId)
     local ped = (cache and cache.ped) or PlayerPedId()
     local playerCoords = coords and vector3(coords.x, coords.y, coords.z) or GetEntityCoords(ped)
-    local playerHeading = coords and (coords.w or coords.heading) or GetEntityHeading(ped)
+    local playerHeading = coords and (coords.w or coords.heading or coords.h) or GetEntityHeading(ped)
+    local spawnCoords = vec4(playerCoords.x, playerCoords.y, playerCoords.z, playerHeading)
+    local label = (extraData and extraData.label) or ('Garage ' .. idStr)
+    local category = (extraData and extraData.category) or 'car'
+    local garageType = (extraData and extraData.garageType) or 'property'
+    local prefix = (extraData and extraData.prefix) or ''
 
     if script == 'ak47_garage' then
-        TriggerEvent("ak47_garage:housing:takevehicle", "Housing "..garageid, 'car')
+        TriggerEvent("ak47_garage:housing:takevehicle", label, category)
         return true
     elseif script == 'ak47_qb_garage' then
-        TriggerEvent("ak47_qb_garage:housing:takevehicle", "Housing "..garageid, 'car')
+        TriggerEvent("ak47_qb_garage:housing:takevehicle", label, category)
         return true
     elseif script == 'cd_garage' then
         if exports['cd_garage'] and exports['cd_garage'].OpenGarage then
@@ -149,13 +178,14 @@ Lib47.OpenGarageHousing = function(garageid, coords)
         TriggerEvent("okokGarage:OpenPrivateGarageMenu", playerCoords, playerHeading)
         return true
     elseif script == 'jg-advancedgarages' then
-        TriggerEvent('jg-advancedgarages:client:open-garage', 'housing:'..garageid, "car", vec4(playerCoords.x, playerCoords.y, playerCoords.z, playerHeading))
+        local jgId = (extraData and extraData.jgId) or (prefix ~= '' and (prefix .. idStr)) or ('housing:' .. idStr)
+        TriggerEvent('jg-advancedgarages:client:open-garage', jgId, category, spawnCoords)
         return true
     elseif script == 'loaf_garage' then
-        exports.loaf_garage:BrowseVehicles("property", vec4(playerCoords.x, playerCoords.y, playerCoords.z, playerHeading))
+        exports.loaf_garage:BrowseVehicles(garageType, spawnCoords)
         return true
     elseif script == 'zerio-garage' then
-        TriggerServerEvent('ak47_housing:ZerioGarage:Open', garageid, "Housing "..garageid, vec4(playerCoords.x, playerCoords.y, playerCoords.z, playerHeading))
+        TriggerServerEvent('ak47_lib:garage:server:OpenGarage', idStr, label, spawnCoords, extraData)
         return true
     elseif script == 'custom' then
         -- your custom code below
@@ -166,7 +196,7 @@ end
 
 exports('GetGarageScript', Lib47.GetGarageScript)
 exports('IsGarageManagedExternally', Lib47.IsGarageManagedExternally)
-exports('SetHouseGarage', Lib47.SetHouseGarage)
-exports('RemoveHouseGarage', Lib47.RemoveHouseGarage)
-exports('StoreVehicleHousing', Lib47.StoreVehicleHousing)
-exports('OpenGarageHousing', Lib47.OpenGarageHousing)
+exports('SetGarage', Lib47.SetGarage)
+exports('RemoveGarage', Lib47.RemoveGarage)
+exports('StoreVehicleToGarage', Lib47.StoreVehicleToGarage)
+exports('OpenVehicleGarage', Lib47.OpenVehicleGarage)

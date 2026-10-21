@@ -83,6 +83,10 @@ Lib47.GetJob = function()
     return Lib47.PlayerData.job
 end
 
+Lib47.OpenBossMenu = function( jobName )
+    TriggerEvent('qb-bossmenu:client:OpenMenu')
+end
+
 Lib47.AddStress = function(amount)
     TriggerServerEvent('hud:server:GainStress', amount)
 end
