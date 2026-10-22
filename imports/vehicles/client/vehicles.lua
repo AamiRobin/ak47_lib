@@ -155,7 +155,7 @@ Lib47.SetVehicleProperties = function(vehicle, props)
         if props.color2 then
             if type(props.color2) == 'number' then
                 ClearVehicleCustomSecondaryColour(vehicle)
-                SetVehicleColours(vehicle, props.color1 or colorPrimary, props.color2)
+                SetVehicleColours(vehicle, type(props.color1) == 'number' and props.color1 or colorPrimary, props.color2)
             else
                 SetVehicleCustomSecondaryColour(vehicle, props.color2[1], props.color2[2], props.color2[3])
             end
