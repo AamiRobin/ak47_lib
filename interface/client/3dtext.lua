@@ -26,6 +26,7 @@ local CULLING_DISTANCE = 30.0
 
 local FocusedInteraction = nil
 local isActionLocked = false
+local customUIActive = false
 
 local function GenerateID(data)
     if data.id then return tostring(data.id) end
@@ -221,7 +222,8 @@ InteractionsLoop = function()
         local isContextActive = (Interface.GetOpenMenu and Interface.GetOpenMenu() ~= nil) or false
         local isInputActive = (Interface.IsInputOpen and Interface.IsInputOpen()) or false
         local isAlertActive = (Interface.IsAlertOpen and Interface.IsAlertOpen()) or false
-        local isUIActive = isPaused or isNpcActive or isContextActive or isInputActive or isAlertActive
+        local isCustomActive = customUIActive or (Interface.IsCustomActive and Interface.IsCustomActive()) or false
+        local isUIActive = isPaused or isNpcActive or isContextActive or isInputActive or isAlertActive or isCustomActive
 
         if next(ActiveInteractions) then
             for id, interact in pairs(ActiveInteractions) do
@@ -242,7 +244,7 @@ InteractionsLoop = function()
 
                 if dist <= maxDist then
                     local onScreen, screenX, screenY = GetScreenCoordFromWorldCoord(coords.x, coords.y, coords.z)
-                    if isUIActive then
+                    if isUIActive or (data.isVisible and not data.isVisible()) then
                         onScreen = false
                     end
 
@@ -508,15 +510,27 @@ function Interface.RemoveTextUi3d(id)
     Interface.HideTextUi3d(id, true)
 end
 
+Interface.SetCustomUIActive = function(state)
+    customUIActive = state and true or false
+end
+
+Interface.IsCustomActive = function()
+    return customUIActive
+end
+
 Lib47.RegisterTextUi3d = Interface.RegisterTextUi3d
 Lib47.RemoveTextUi3d = Interface.RemoveTextUi3d
 Lib47.ShowTextUi3d = Interface.ShowTextUi3d
 Lib47.HideTextUi3d = Interface.HideTextUi3d
+Lib47.SetCustomUIActive = Interface.SetCustomUIActive
+Lib47.IsCustomActive = Interface.IsCustomActive
 
 exports('RegisterTextUi3d', Interface.RegisterTextUi3d)
 exports('RemoveTextUi3d', Interface.RemoveTextUi3d)
 exports('ShowTextUi3d', Interface.ShowTextUi3d)
 exports('HideTextUi3d', Interface.HideTextUi3d)
+exports('SetCustomUIActive', Interface.SetCustomUIActive)
+exports('IsCustomActive', Interface.IsCustomActive)
 
 AddEventHandler('onResourceStop', function(resourceName)
     if GetCurrentResourceName() == resourceName then
