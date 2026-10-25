@@ -6,6 +6,7 @@ local math_sqrt = math.sqrt
 local math_floor = math.floor
 local string_format = string.format
 local table_insert = table.insert
+local table_wipe = table.wipe or function(t) for k in pairs(t) do t[k] = nil end end
 
 local holdState = {
     active = false,
@@ -22,11 +23,17 @@ local ActiveInteractions = {}
 
 local GlobalThreadActive = false
 local CullingThreadActive = false
+
 local CULLING_DISTANCE = 30.0
+local STATE_CHECK_INTERVAL = 200 -- ms between isVisible / canInteract evaluations
+local UI_CHECK_INTERVAL = 150    -- ms between global UI active checks
+local POS_DELTA_THRESHOLD = 0.0002 -- Minimum screen coordinate delta to trigger NUI update
 
 local FocusedInteraction = nil
 local isActionLocked = false
 local customUIActive = false
+local cachedUIActive = false
+local lastUICheckTime = 0
 
 local function GenerateID(data)
     if data.id then return tostring(data.id) end
@@ -34,6 +41,88 @@ local function GenerateID(data)
     local y = math_floor(data.coords.y * 100) / 100
     local z = math_floor(data.coords.z * 100) / 100
     return string_format("%s_%s_%s", x, y, z)
+end
+
+local function ResetHoldState(targetId)
+    if targetId == nil or holdState.ownerId == targetId then
+        holdState.active = false
+        holdState.completed = false
+        holdState.ownerId = nil
+        holdState.keyIndex = nil
+        holdState.lastProgress = -1
+    end
+end
+
+local function HideInteractionUI(id, interact)
+    if not interact.offScreen then
+        SendNUIMessage({ action = "hide", id = id })
+        interact.offScreen = true
+        interact.displayed = false
+        interact.lastMode = nil
+        interact.lastScreenX = -1.0
+        interact.lastScreenY = -1.0
+    end
+    interact.keysReleased = false
+    ResetHoldState(id)
+end
+
+-- ====================================================================
+-- Smart Throttled State Evaluator (isVisible & canInteract Caching)
+-- ====================================================================
+local function EvaluateInteractionState(interact, now, forceFullCheck)
+    if not forceFullCheck and (now - interact.lastStateCheck) < STATE_CHECK_INTERVAL then
+        return interact.cachedVisible
+    end
+
+    interact.lastStateCheck = now
+    local data = interact.data
+
+    -- 1. Evaluate root visibility
+    local isVis = true
+    if data.isVisible then
+        isVis = data.isVisible() and true or false
+    end
+
+    if not isVis then
+        interact.cachedVisible = false
+        return false
+    end
+
+    interact.cachedVisible = true
+
+    -- 2. Evaluate options visibility & canInteract
+    local options = data.options
+    if options then
+        local optVisible = interact.optVisible
+        local optCanInteract = interact.optCanInteract
+        local dirty = false
+
+        for i = 1, #options do
+            local opt = options[i]
+
+            local vis = true
+            if opt.isVisible ~= nil then
+                vis = opt.isVisible() and true or false
+            end
+
+            local canInt = true
+            if vis and opt.canInteract ~= nil then
+                canInt = opt.canInteract() and true or false
+            end
+
+            if optVisible[i] ~= vis or optCanInteract[i] ~= canInt then
+                dirty = true
+                optVisible[i] = vis
+                optCanInteract[i] = canInt
+            end
+        end
+
+        if dirty then
+            interact.stateDirty = true
+        end
+    end
+
+    return true
 end
 
 local InteractionsLoop
@@ -54,30 +143,34 @@ local function EnsureCullingLoop()
 end
 
 -- ====================================================================
--- Isolated Input Dispatcher (Runs strictly on the single focused target)
+-- Isolated Input Dispatcher (Uses Cached State + Final Verification)
 -- ====================================================================
-local function ProcessInteractionInput(id, interact)
+local function ProcessInteractionInput(id, interact, now)
     if isActionLocked or not interact then return end
 
     local data = interact.data
-    local options = data.options or {}
+    local options = data.options
+    if not options then return end
 
-    for i, opt in ipairs(options) do
-        if opt.key and (opt.canInteract == nil or (opt.canInteract and opt.canInteract())) then
+    local optVisible = interact.optVisible
+    local optCanInteract = interact.optCanInteract
+
+    for i = 1, #options do
+        local opt = options[i]
+        -- Use cached visibility and canInteract to avoid per-frame callback execution
+        if opt.key and optVisible[i] ~= false and optCanInteract[i] ~= false then
             if opt.hold and opt.hold > 0 then
                 local holdTimeMs = opt.hold * 1000
                 
                 if holdState.ownerId == id and holdState.keyIndex == i then
                     if holdState.completed then
                         if not IsControlPressed(0, opt.key) then
-                            holdState.completed = false
-                            holdState.ownerId = nil
-                            holdState.lastProgress = -1
+                            ResetHoldState(id)
                             SendNUIMessage({ action = "progress", id = id, index = i, progress = 0 })
                         end
                     elseif holdState.active then
                         if IsControlPressed(0, opt.key) then
-                            local elapsed = GetGameTimer() - holdState.startTime
+                            local elapsed = now - holdState.startTime
                             local progress = elapsed / holdState.duration
                             if progress >= 1.0 then progress = 1.0 end
 
@@ -94,48 +187,59 @@ local function ProcessInteractionInput(id, interact)
                                 isActionLocked = true
                                 CreateThread(function()
                                     Wait(250)
-                                    if opt.action then
+                                    -- Final verification right before executing action
+                                    if opt.action and (opt.canInteract == nil or opt.canInteract()) then
                                         opt.action()
                                     end
                                     isActionLocked = false
                                 end)
                             end
                         else
-                            holdState.active = false
-                            holdState.ownerId = nil
-                            holdState.lastProgress = -1
+                            ResetHoldState(id)
                             SendNUIMessage({ action = "progress", id = id, index = i, progress = 0 })
                         end
                     end
                 else
                     if IsControlJustPressed(0, opt.key) then
                         if holdState.ownerId == nil or holdState.ownerId == id then
-                            holdState.active = true
-                            holdState.keyIndex = i
-                            holdState.ownerId = id
-                            holdState.startTime = GetGameTimer()
-                            holdState.duration = holdTimeMs
-                            holdState.completed = false
-                            holdState.lastProgress = 0
-                            SendNUIMessage({ action = "progress", id = id, index = i, progress = 0 })
+                            -- Verify canInteract once at the start of the hold
+                            if opt.canInteract == nil or opt.canInteract() then
+                                holdState.active = true
+                                holdState.keyIndex = i
+                                holdState.ownerId = id
+                                holdState.startTime = now
+                                holdState.duration = holdTimeMs
+                                holdState.completed = false
+                                holdState.lastProgress = 0
+                                SendNUIMessage({ action = "progress", id = id, index = i, progress = 0 })
+                            else
+                                optCanInteract[i] = false
+                                interact.stateDirty = true
+                            end
                         end
                     end
                 end
             else
                 -- Non-hold button: Debounce locked execution
                 if IsControlJustReleased(0, opt.key) then
-                    isActionLocked = true
-                    SendNUIMessage({ action = "bump", id = id, index = i })
-                    if opt.action then
-                        CreateThread(function()
-                            opt.action()
-                            Wait(250)
+                    -- Verify canInteract once on release before firing
+                    if opt.canInteract == nil or opt.canInteract() then
+                        isActionLocked = true
+                        SendNUIMessage({ action = "bump", id = id, index = i })
+                        if opt.action then
+                            CreateThread(function()
+                                opt.action()
+                                Wait(250)
+                                isActionLocked = false
+                            end)
+                        else
                             isActionLocked = false
-                        end)
+                        end
+                        break
                     else
-                        isActionLocked = false
+                        optCanInteract[i] = false
+                        interact.stateDirty = true
                     end
-                    break
                 end
             end
         end
@@ -163,20 +267,7 @@ CullingLoop = function()
             else
                 if ActiveInteractions[id] then
                     ActiveInteractions[id] = nil
-                    
-                    if not interact.offScreen then
-                        SendNUIMessage({ action = "hide", id = id })
-                        interact.offScreen = true
-                        interact.displayed = false
-                        interact.lastMode = nil
-                    end
-
-                    if holdState.ownerId == id then
-                        holdState.active = false
-                        holdState.completed = false
-                        holdState.ownerId = nil
-                        holdState.lastProgress = -1
-                    end
+                    HideInteractionUI(id, interact)
 
                     if not interact.static then
                         GlobalInteractions[id] = nil
@@ -197,33 +288,34 @@ end
 -- FAST RENDER & SPATIAL LOOP
 -- ====================================================================
 InteractionsLoop = function()
+    local itemsToRemove = {}
+    local onScreenCandidates = {}
+
     while true do
         local count = 0
-        local itemsToRemove = {}
-        local onScreenCandidates = {}
-        local batchedPositions = {}
-        local hasPositions = false
-        
+        local anyNearMaxDist = false
+        local now = GetGameTimer()
+
+        table_wipe(itemsToRemove)
+        table_wipe(onScreenCandidates)
+
+        -- Throttle global UI checks to every 150ms instead of every frame
+        if (now - lastUICheckTime) >= UI_CHECK_INTERVAL then
+            lastUICheckTime = now
+            local isPaused = IsPauseMenuActive()
+            local isNpcActive = (Interface.IsNpcInteractActive and Interface.IsNpcInteractActive()) or false
+            local isContextActive = (Interface.GetOpenMenu and Interface.GetOpenMenu() ~= nil) or false
+            local isInputActive = (Interface.IsInputOpen and Interface.IsInputOpen()) or false
+            local isAlertActive = (Interface.IsAlertOpen and Interface.IsAlertOpen()) or false
+            local isCustomActive = customUIActive or (Interface.IsCustomActive and Interface.IsCustomActive()) or false
+            cachedUIActive = isPaused or isNpcActive or isContextActive or isInputActive or isAlertActive or isCustomActive
+        end
+
         local ped = PlayerPedId()
         local plyCoords = GetEntityCoords(ped)
-        local camCoords = GetGameplayCamCoord()
-        local camRot = GetGameplayCamRot(2)
-        
-        local radX = math_rad(camRot.x)
-        local radZ = math_rad(camRot.z)
-        local cosX = math_cos(radX)
 
-        local camForwardX = -math_sin(radZ) * math_abs(cosX)
-        local camForwardY = math_cos(radZ) * math_abs(cosX)
-        local camForwardZ = math_sin(radX)
-
-        local isPaused = IsPauseMenuActive()
-        local isNpcActive = (Interface.IsNpcInteractActive and Interface.IsNpcInteractActive()) or false
-        local isContextActive = (Interface.GetOpenMenu and Interface.GetOpenMenu() ~= nil) or false
-        local isInputActive = (Interface.IsInputOpen and Interface.IsInputOpen()) or false
-        local isAlertActive = (Interface.IsAlertOpen and Interface.IsAlertOpen()) or false
-        local isCustomActive = customUIActive or (Interface.IsCustomActive and Interface.IsCustomActive()) or false
-        local isUIActive = isPaused or isNpcActive or isContextActive or isInputActive or isAlertActive or isCustomActive
+        local camCoords, camForwardX, camForwardY, camForwardZ
+        local camInitialized = false
 
         if next(ActiveInteractions) then
             for id, interact in pairs(ActiveInteractions) do
@@ -242,13 +334,34 @@ InteractionsLoop = function()
                     maxDist = distNear + 2.0
                 end
 
+                if dist <= (maxDist + 3.0) then
+                    anyNearMaxDist = true
+                end
+
                 if dist <= maxDist then
-                    local onScreen, screenX, screenY = GetScreenCoordFromWorldCoord(coords.x, coords.y, coords.z)
-                    if isUIActive or (data.isVisible and not data.isVisible()) then
-                        onScreen = false
+                    -- Check UI & throttled visibility BEFORE calling world-to-screen native
+                    local isVisible = (not cachedUIActive) and EvaluateInteractionState(interact, now, false)
+                    local onScreen, screenX, screenY = false, 0.0, 0.0
+
+                    if isVisible then
+                        onScreen, screenX, screenY = GetScreenCoordFromWorldCoord(coords.x, coords.y, coords.z)
                     end
 
                     if onScreen then
+                        -- Lazy-init camera vectors only when at least 1 interaction is on screen
+                        if not camInitialized then
+                            camInitialized = true
+                            camCoords = GetGameplayCamCoord()
+                            local camRot = GetGameplayCamRot(2)
+                            local radX = math_rad(camRot.x)
+                            local radZ = math_rad(camRot.z)
+                            local absCosX = math_abs(math_cos(radX))
+
+                            camForwardX = -math_sin(radZ) * absCosX
+                            camForwardY = math_cos(radZ) * absCosX
+                            camForwardZ = math_sin(radX)
+                        end
+
                         local toCamX = coords.x - camCoords.x
                         local toCamY = coords.y - camCoords.y
                         local toCamZ = coords.z - camCoords.z
@@ -259,8 +372,7 @@ InteractionsLoop = function()
                             alignment = (camForwardX * toCamX + camForwardY * toCamY + camForwardZ * toCamZ) / toCamLen
                         end
                         
-                        local focusAngle = 0.98
-                        local inFocusRange = (dist <= distNear and alignment > focusAngle)
+                        local inFocusRange = (dist <= distNear and alignment > 0.98)
 
                         table_insert(onScreenCandidates, {
                             id = id,
@@ -272,32 +384,12 @@ InteractionsLoop = function()
                             inFocusRange = inFocusRange
                         })
                     else
-                        -- Off-screen
-                        if not interact.offScreen then
-                            SendNUIMessage({ action = "hide", id = id })
-                            interact.offScreen = true
-                            interact.displayed = false
-                            interact.lastMode = nil
-                            interact.keysReleased = false
-                            
-                            if holdState.ownerId == id then
-                                holdState.active = false
-                                holdState.completed = false
-                                holdState.ownerId = nil
-                                holdState.lastProgress = -1
-                            end
-                        end
+                        HideInteractionUI(id, interact)
                     end
                 else
                     -- Out of max distance
                     if interact.static then
-                        if not interact.offScreen then
-                            SendNUIMessage({ action = "hide", id = id })
-                            interact.offScreen = true
-                            interact.displayed = false
-                            interact.lastMode = nil
-                            interact.keysReleased = false
-                        end
+                        HideInteractionUI(id, interact)
                     else
                         table_insert(itemsToRemove, id)
                     end
@@ -305,15 +397,16 @@ InteractionsLoop = function()
             end
         end
 
-        for _, id in ipairs(itemsToRemove) do
-            Interface.HideTextUi3d(id, true)
+        for i = 1, #itemsToRemove do
+            Interface.HideTextUi3d(itemsToRemove[i], true)
         end
 
         -- Find the single best focused candidate
         local bestTargetId = nil
         local bestAlignment = -1.0
         local bestInteract = nil
-        for _, cand in ipairs(onScreenCandidates) do
+        for i = 1, #onScreenCandidates do
+            local cand = onScreenCandidates[i]
             if cand.inFocusRange and cand.alignment > bestAlignment then
                 bestAlignment = cand.alignment
                 bestTargetId = cand.id
@@ -321,31 +414,32 @@ InteractionsLoop = function()
             end
         end
 
+        local batchedPositions = nil
+        local hasPositions = false
+
         -- Process all on-screen candidates for UI display
-        for _, cand in ipairs(onScreenCandidates) do
+        for i = 1, #onScreenCandidates do
+            local cand = onScreenCandidates[i]
             local id = cand.id
             local interact = cand.interact
             local data = interact.data
-            local mode = (id == bestTargetId) and "full" or "mini"
+            local options = data.options
+            local optVisible = interact.optVisible
+            local optCanInteract = interact.optCanInteract
 
-            -- Filter visible options
-            local options = data.options or {}
-            local validOptions = {}
-            for i, opt in ipairs(options) do
-                if opt.isVisible == nil or (opt.isVisible and opt.isVisible()) then
-                    table_insert(validOptions, { index = i, opt = opt })
-                end
-            end
+            local mode = (id == bestTargetId) and "full" or "mini"
 
             -- Ensure controls are released before accepting inputs in full mode
             if mode == "full" then
                 if not interact.keysReleased then
                     local isHoldingAny = false
-                    for _, v in ipairs(validOptions) do
-                        local opt = v.opt
-                        if opt.key and IsControlPressed(0, opt.key) then
-                            isHoldingAny = true
-                            break
+                    if options then
+                        for idx = 1, #options do
+                            local opt = options[idx]
+                            if optVisible[idx] ~= false and opt.key and IsControlPressed(0, opt.key) then
+                                isHoldingAny = true
+                                break
+                            end
                         end
                     end
 
@@ -359,29 +453,37 @@ InteractionsLoop = function()
                 interact.keysReleased = false
             end
 
-            -- Send full display payload ONLY when mode changes, or when first shown / returning on-screen
             local modeChanged = (interact.lastMode ~= mode)
-            local needsDisplay = (not interact.displayed) or interact.offScreen or modeChanged
+
+            -- If switching into full mode, force an immediate state refresh so options are 100% up-to-date
+            if modeChanged and mode == "full" then
+                EvaluateInteractionState(interact, now, true)
+            end
+
+            local needsDisplay = (not interact.displayed) or interact.offScreen or modeChanged or interact.stateDirty
 
             if needsDisplay then
                 local nuiOptions = {}
-                for _, v in ipairs(validOptions) do
-                    local i = v.index
-                    local opt = v.opt
-                    local keyName = opt.keyName
-                    if not keyName and opt.key and Lib47.Keys and Lib47.Keys[opt.key] then
-                        keyName = Lib47.Keys[opt.key].keyboard
-                    end
+                if options then
+                    for idx = 1, #options do
+                        if optVisible[idx] ~= false then
+                            local opt = options[idx]
+                            local keyName = opt.keyName
+                            if not keyName and opt.key and Lib47.Keys and Lib47.Keys[opt.key] then
+                                keyName = Lib47.Keys[opt.key].keyboard
+                            end
 
-                    table_insert(nuiOptions, {
-                        originalIndex = i,
-                        label = opt.label,
-                        key = keyName,
-                        progress = 0,
-                        activeBump = false,
-                        disabled = not (opt.canInteract == nil or (opt.canInteract and opt.canInteract())),
-                        hold = opt.hold or 0
-                    })
+                            table_insert(nuiOptions, {
+                                originalIndex = idx,
+                                label = opt.label,
+                                key = keyName,
+                                progress = (holdState.ownerId == id and holdState.keyIndex == idx and holdState.lastProgress > 0) and holdState.lastProgress or 0,
+                                activeBump = false,
+                                disabled = (optCanInteract[idx] == false),
+                                hold = opt.hold or 0
+                            })
+                        end
+                    end
                 end
 
                 SendNUIMessage({
@@ -398,14 +500,22 @@ InteractionsLoop = function()
                 interact.displayed = true
                 interact.offScreen = false
                 interact.lastMode = mode
+                interact.stateDirty = false
+                interact.lastScreenX = cand.screenX
+                interact.lastScreenY = cand.screenY
+            else
+                -- Only batch position updates if screen coordinates actually changed
+                if math_abs(cand.screenX - interact.lastScreenX) > POS_DELTA_THRESHOLD or math_abs(cand.screenY - interact.lastScreenY) > POS_DELTA_THRESHOLD then
+                    interact.lastScreenX = cand.screenX
+                    interact.lastScreenY = cand.screenY
+                    if not batchedPositions then batchedPositions = {} end
+                    batchedPositions[id] = { x = cand.screenX, y = cand.screenY }
+                    hasPositions = true
+                end
             end
-
-            -- Add to batched position update
-            batchedPositions[id] = { x = cand.screenX, y = cand.screenY }
-            hasPositions = true
         end
 
-        -- Send batched screen positions to NUI in 1 single message for this frame
+        -- Send batched screen positions to NUI ONLY when coordinates moved
         if hasPositions then
             SendNUIMessage({
                 action = "updatePositions",
@@ -415,18 +525,13 @@ InteractionsLoop = function()
 
         -- Clean up hold state if losing focus
         if FocusedInteraction and FocusedInteraction ~= bestTargetId then
-            if holdState.ownerId == FocusedInteraction then
-                holdState.active = false
-                holdState.completed = false
-                holdState.ownerId = nil
-                holdState.lastProgress = -1
-            end
+            ResetHoldState(FocusedInteraction)
         end
         FocusedInteraction = bestTargetId
 
         -- Process input ONLY for the single best focused target
         if bestTargetId and bestInteract and bestInteract.keysReleased then
-            ProcessInteractionInput(bestTargetId, bestInteract)
+            ProcessInteractionInput(bestTargetId, bestInteract, now)
         end
 
         if count == 0 then
@@ -434,8 +539,13 @@ InteractionsLoop = function()
             FocusedInteraction = nil
             break 
         end
-        
-        Wait(0)
+
+        -- Adaptive sleep: if no active interaction is near maxDistance, sleep 250ms instead of running every frame
+        if anyNearMaxDist then
+            Wait(0)
+        else
+            Wait(250)
+        end
     end
 end
 
@@ -447,10 +557,15 @@ Interface.ShowTextUi3d = function(data, static)
     local id = GenerateID(data)
 
     if GlobalInteractions[id] then
-        GlobalInteractions[id].data = data
-        GlobalInteractions[id].static = static
-        GlobalInteractions[id].invoked = invoked
-        GlobalInteractions[id].displayed = false
+        local interact = GlobalInteractions[id]
+        interact.data = data
+        interact.static = static
+        interact.invoked = invoked
+        interact.displayed = false
+        interact.lastStateCheck = 0
+        interact.stateDirty = true
+        table_wipe(interact.optVisible)
+        table_wipe(interact.optCanInteract)
     else
         GlobalInteractions[id] = {
             id = id,
@@ -460,7 +575,14 @@ Interface.ShowTextUi3d = function(data, static)
             offScreen = true,
             displayed = false,
             lastMode = nil,
-            keysReleased = false
+            keysReleased = false,
+            cachedVisible = true,
+            lastStateCheck = 0,
+            stateDirty = false,
+            lastScreenX = -1.0,
+            lastScreenY = -1.0,
+            optVisible = {},
+            optCanInteract = {}
         }
     end
 
@@ -480,25 +602,13 @@ Interface.HideTextUi3d = function(id, force)
         local interact = GlobalInteractions[id]
         
         if interact.static and not force then
-            if not interact.offScreen then
-                SendNUIMessage({ action = "hide", id = id })
-                interact.offScreen = true
-                interact.displayed = false
-                interact.lastMode = nil
-            end
-            interact.keysReleased = false
+            HideInteractionUI(id, interact)
         else
             GlobalInteractions[id] = nil
             ActiveInteractions[id] = nil
             SendNUIMessage({ action = "hide", id = id })
+            ResetHoldState(id)
         end 
-        
-        if holdState.ownerId == id then
-            holdState.active = false
-            holdState.completed = false
-            holdState.ownerId = nil
-            holdState.lastProgress = -1
-        end
     end
 end
 
@@ -512,6 +622,7 @@ end
 
 Interface.SetCustomUIActive = function(state)
     customUIActive = state and true or false
+    lastUICheckTime = 0
 end
 
 Interface.IsCustomActive = function()
@@ -538,6 +649,7 @@ AddEventHandler('onResourceStop', function(resourceName)
         ActiveInteractions = {}
         FocusedInteraction = nil
         isActionLocked = false
+        ResetHoldState(nil)
         SendNUIMessage({ action = "hideAll" })
     else
         for i, v in pairs(GlobalInteractions) do

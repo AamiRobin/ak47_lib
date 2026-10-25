@@ -277,6 +277,7 @@ Lib47.Zones.getAllZones
 Lib47.Zones.getCurrentZones
 Lib47.Zones.getNearbyZones
 Lib47.TakeScreenshot
+Lib47.RemoveBackground
 Lib47.UploadToFiveManage
 Lib47.UploadMultipleToFiveManage
 Lib47.TakeScreenshotAndUpload
